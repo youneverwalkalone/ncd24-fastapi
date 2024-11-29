@@ -131,3 +131,79 @@ jobs:
           destination_repo: ${{ env.GITOPS_REPO }}
           deploy_key: ${{ secrets.GITOPS_DEPLOY_KEY }}
           commit_message: "Update Image Version to ${{ env.IMAGE_NAME}}:${{ needs.setup.outputs.image_tag }}"
+
+
+
+
+  trivy-sca-security-gate:
+    runs-on: ubuntu-latest
+    needs:
+      - setup
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Trivy SCA Vulnerability Fail Gate
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: "fs"
+          scan-ref: .
+          scanners: 'vuln,license'
+          severity: 'MEDIUM,HIGH,CRITICAL'
+          format: table
+          output: ${{ env.TRIVY_SCA_OUTPUT_FILENAME }}
+          exit-code: 1
+        env:
+          TRIVY_DISABLE_VEX_NOTICE: true
+      - name: Publish Trivy SCA Output to Summary
+        if: always()
+        run: |
+          if [[ -s $TRIVY_SCA_OUTPUT_FILENAME ]]; then
+            {
+              echo "### Trivy SCA Output"
+              echo "<details><summary>Click to expand</summary>"
+              echo ""
+              echo '```terraform'
+              cat $TRIVY_SCA_OUTPUT_FILENAME
+              echo '```'
+              echo "</details>"
+            } >> $GITHUB_STEP_SUMMARY
+          fi
+    env:
+      TRIVY_SCA_OUTPUT_FILENAME: trivy-sca-report.txt
+
+  trivy-image-security-gate:
+    runs-on: ubuntu-latest
+    needs:
+      - setup
+      - build-push
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Trivy Image Vulnerability Fail Gate
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.image_tag }}
+          scanners: 'vuln,misconfig,secret'
+          severity: 'HIGH,CRITICAL'
+          format: table
+          ignore-unfixed: true
+          output: ${{ env.TRIVY_IMAGE_OUTPUT_FILENAME }}
+          exit-code: 1
+        env:
+          TRIVY_DISABLE_VEX_NOTICE: true
+      - name: Publish Trivy Image Output to Summary
+        if: always()
+        run: |
+          if [[ -s $TRIVY_IMAGE_OUTPUT_FILENAME ]]; then
+            {
+              echo "### Trivy Image Output"
+              echo "<details><summary>Click to expand</summary>"
+              echo ""
+              echo '```terraform'
+              cat $TRIVY_IMAGE_OUTPUT_FILENAME
+              echo '```'
+              echo "</details>"
+            } >> $GITHUB_STEP_SUMMARY
+          fi
+    env:
+      TRIVY_IMAGE_OUTPUT_FILENAME: trivy-image-report.txt
